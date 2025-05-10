@@ -1,0 +1,40 @@
+services:
+  flask_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flask_crud_app
+    restart: unless-stopped
+    environment:
+      # --- IMPORTANT ---
+      # Set these environment variables in your AWS environment (e.g., ECS Task Definition, Elastic Beanstalk)
+      # Do not hardcode sensitive credentials here for production.
+      FLASK_ENV: production
+      DATABASE_URL: "postgresql+psycopg2://USER:PASSWORD@AURORA_ENDPOINT:PORT/DATABASE_NAME" # Example for Aurora PostgreSQL
+      # For Aurora MySQL, it would be: "mysql+pymysql://USER:PASSWORD@AURORA_ENDPOINT:PORT/DATABASE_NAME"
+      SECRET_KEY: "your_production_secret_key" # Change this to a strong random key
+    expose:
+      - "5000"
+    volumes:
+      - ./example-flask-crud/app/static:/app/app/static # Mount static files if Nginx is to serve them directly (optional)
+    networks:
+      - app_network
+
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    container_name: nginx_proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - flask_app
+    volumes: # Added for Nginx to serve static files
+      - ./example-flask-crud/app/static:/app/app/static
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
