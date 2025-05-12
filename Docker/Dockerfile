@@ -1,31 +1,33 @@
-# Use the official Python image from the Docker Hub
+# Docker/Dockerfile
 FROM python:3.13-slim
 
-# Set the working directory in the container
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
 WORKDIR /app
 
-# Create a non-root user and group (good practice for production)
+# Install system dependencies if needed (e.g., for psycopg2, netcat for better wait)
+# RUN apt-get update && apt-get install -y --no-install-recommends netcat-openbsd postgresql-client && rm -rf /var/lib/apt/lists/*
+
 RUN addgroup --system app && adduser --system --ingroup app app
 
-# Copy the requirements file into the container
+# Copy requirements *first* from the app sub-directory
 COPY ./example-flask-crud/requirements.txt .
 
-# Install the dependencies (including uvicorn)
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code into the container
-# Ensure .dockerignore is set up
-COPY . .
+# Copy the entrypoint script from the build context root (Docker/)
+COPY ./entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh && chown app:app /entrypoint.sh
 
-# Change ownership of the app directory
+# Copy the application code from the app sub-directory
+COPY ./example-flask-crud /app
+
 RUN chown -R app:app /app
 
-# Switch to the non-root user
 USER app
 
-# Expose the port the app runs on
 EXPOSE 5000
 
-# Command to run the application using Uvicorn
-# This assumes your Flask app instance is named 'app' in 'crudapp.py'
-CMD ["uvicorn", "crudapp:app", "--host", "0.0.0.0", "--port", "5000"]
+ENTRYPOINT ["/entrypoint.sh"]

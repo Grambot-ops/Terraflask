@@ -1,0 +1,17 @@
+# Docker/.dockerignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.git/
+.gitignore
+*.db
+*.sqlite3
+docker-compose.yaml
+Dockerfile
+nginx/
+README.md
