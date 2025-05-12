@@ -1,30 +1,31 @@
-# Use an official Python runtime as a parent image
+# Use the official Python image from the Docker Hub
 FROM python:3.13-slim
-
-# Set environment variables for Python
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy the requirements file
-COPY example-flask-crud/requirements.txt .
+# Create a non-root user and group (good practice for production)
+RUN addgroup --system app && adduser --system --ingroup app app
 
-# Install Python dependencies
-# --no-cache-dir reduces image size
+# Copy the requirements file into the container
+COPY ./example-flask-crud/requirements.txt .
+
+# Install the dependencies (including uvicorn)
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir gunicorn
 
 # Copy the rest of the application code into the container
-# This includes your 'app' package, crudapp.py, etc.
-COPY example-flask-crud/ .
+# Ensure .dockerignore is set up
+COPY . .
 
-# Expose the port Gunicorn will run on
+# Change ownership of the app directory
+RUN chown -R app:app /app
+
+# Switch to the non-root user
+USER app
+
+# Expose the port the app runs on
 EXPOSE 5000
 
-# Run the application using Gunicorn
-# Adjust the number of workers based on your instance's CPU cores (e.g., (2 * CPU_CORES) + 1)
+# Command to run the application using Uvicorn
 # This assumes your Flask app instance is named 'app' in 'crudapp.py'
-# (e.g., crudapp.py contains: from app import create_app; app = create_app())
-CMD ["gunicorn", "--workers", "3", "--bind", "0.0.0.0:5000", "crudapp:app"]
+CMD ["uvicorn", "crudapp:app", "--host", "0.0.0.0", "--port", "5000"]
