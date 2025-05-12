@@ -1,5 +1,4 @@
 services:
-  # Flask Application Service
   application:
     build:
       context: . # Build context is this directory (Docker/)
