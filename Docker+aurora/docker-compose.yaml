@@ -1,0 +1,43 @@
+services:
+  application:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flask_crud_app
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    # depends_on: db # We will remove this when switching to Aurora
+    ports: # Expose the app directly for local testing if needed
+      - "5000:5000" # Map host port 5000 to container port 5000
+    networks:
+      - app-network
+    environment:
+      - DATABASE_URL=${DATABASE_URL} # This will now point to Aurora
+
+  # Database Service (PostgreSQL) - THIS WILL BE REMOVED LATER
+  # For now, we keep it to explain the transition.
+  db:
+    image: postgres:17-alpine
+    container_name: postgres_db
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# Networks Definition
+networks:
+  app-network:
+    driver: bridge
