@@ -1,7 +1,7 @@
 resource "random_password" "db_password" {
   length           = 16
   special          = true
-  override_special = "_%@/"
+  override_special = "_%#$"
 }
 
 resource "aws_secretsmanager_secret" "db_master_password" {
@@ -36,7 +36,7 @@ resource "aws_rds_cluster" "main" {
   backup_retention_period = 7
   preferred_backup_window = "02:00-03:00"
   storage_encrypted       = true
-  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+  enabled_cloudwatch_logs_exports = ["postgresql"]
   tags = merge(local.tags, { Name = "${local.project_tag}-aurora-cluster", Tier = "database" })
 }
 

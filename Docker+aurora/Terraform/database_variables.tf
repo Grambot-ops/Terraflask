@@ -13,7 +13,7 @@ variable "db_username" {
 variable "db_engine_version" {
   description = "Aurora postgreSQL engine version"
   type = string
-  default = "17"
+  default = "17.4"
 }
 
 variable "db_instance_class" {
