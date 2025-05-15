@@ -1,0 +1,555 @@
+this is my project:
+"
+For the third and final assignment you will have to design and implement a multi-tier cloud architecture for a web application. We will once again deploy the simple crud flask app Koppelingen naar een externe site. we previously used during assignment 1. But this time instead of running it in a single container we will design a fully fledged multi-tier architecture that is production ready. This means you will no longer be allowed to launch the application using the flask development server using the "flask run" command. Instead you will have to deploy it using a production ready WSGI server. You can learn more about this in the flask documentation: https://flask.palletsprojects.com/en/2.3.x/deploying/
+
+Koppelingen naar een externe site.
+
+Making an application production ready sometimes requires some minor changes to the application's code. For example, changing the code that connects the application to the database. Usually a cloud architect or cloud engineer works together with the developers to make these changes. For this assignment it will be up to you to implement these changes. It is important you take your time to understand the application and it's inner-workings and make the necessary changes before attempting to deploy it to production.
+
+Multi-tier Architecture design
+
+Start of by creating a diagram for your multi-tier architecture. You may use diagrams.net or any other diagramming tool you like. We advise using the AWS shape set for consistency.
+
+Your design should meet the following requirements:
+
+    A multi-tier architecture consisting of at least the following three tiers
+        1) Front-end tier webserver
+            This tier acts as a proxy that is reachable from the internet
+            You may choose any suitable AWS service or run your own apache/nginx in ECS or EC2
+            This tier will be located in a public subnet.
+        2) Middle tier application server
+            This is the WSGI that runs the flask application
+            You may use any of the WSGI servers mentioned in the Flask documentation
+            It should not be directly reachable from the internet
+            This tier will be located in a private subnet.
+        3) Back-end tier database
+            This tier contains the database that holds the application's data (the notes stored in the app)
+            It should only be reachable by the WSGI server to store and retrieve data
+            You may choose any suitable AWS service or run your own database in ECS or EC2
+            This tier will be located in a private subnet.
+    The application's data should remain available after restarting any service within the architecture
+    Metrics and logs of the tiers should be centralised to Cloudwatch whenever possible.
+    The application should be reachable from a public IP (or domain) on port 80 (HTTP)
+    Suggestions for extra points:
+        implement HTTPS and redirect traffic from port 80 to port 443
+        Implement load balancing for improved reliability and/or scalability
+        Implement database replication for improved reliability and/or scalability
+        Implement a bastion host to securely remote into the Back-end tier database
+
+Documentation
+
+You will design, create and document your solution. When you are finished you upload your documentation as a pdf file. The documentation should contain the following parts:
+
+    The architectural design supported by (at least):
+        A diagram showing all components and their connectivity
+        A table containing all configured securitygroups
+        A table containing all configured routingtables
+        For each component the IP addressing (if applicable)
+    Step-by-step guide for implementation of the design supported by:
+        Simple configuration instructions, no need to explain the used technology or services
+        Screenshots during or showing the result of configuration
+            include identifiable information such as your name as proof
+        Try to include a reason for each technology or service you selected for your design
+
+Useful links, hints and tips
+
+    Application repository: https://github.com/gurkanakdeniz/example-flask-crud
+
+Koppelingen naar een externe site.
+Flask deployment to production: https://flask.palletsprojects.com/en/2.3.x/deploying/
+Koppelingen naar een externe site.
+Tell Flask it is behind a proxy: https://flask.palletsprojects.com/en/2.3.x/deploying/proxy_fix/
+Koppelingen naar een externe site.
+Making a Flask project installable: https://flask.palletsprojects.com/en/2.3.x/tutorial/install/
+Koppelingen naar een externe site.
+You are allowed to make minor changes to the application's files in order to make it work with your cloud setup
+
+    Document any changes you have made!
+
+The 'config.py' file could be of interest in order to connect to the database
+Connecting your Flask app to AWS RDS: https://neil.tesaluna.com/posts/connecting-flask-to-aws-rds/
+Koppelingen naar een externe site.
+An alternative to the WSGI servers mentioned in the flask documentation: https://pypi.org/project/uvicorn/
+
+Koppelingen naar een externe site.
+"
+this is my docker-compose.yaml:
+"
+services:
+application:
+build:
+context: .
+dockerfile: Dockerfile
+container_name: flask_crud_app
+restart: unless-stopped
+env_file: - ./.env # depends_on: db # We will remove this when switching to Aurora
+ports: # Expose the app directly for local testing if needed - "5000:5000" # Map host port 5000 to container port 5000
+networks: - app-network
+environment: - DATABASE_URL=${DATABASE_URL} # This will now point to Aurora
+
+# Database Service (PostgreSQL) - THIS WILL BE REMOVED LATER
+
+# For now, we keep it to explain the transition.
+
+db:
+image: postgres:17-alpine
+container_name: postgres_db
+restart: unless-stopped
+env_file: - ./.env
+environment:
+POSTGRES_USER: ${POSTGRES_USER}
+POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+POSTGRES_DB: ${POSTGRES_DB}
+volumes: - db-data:/var/lib/postgresql/data
+networks: - app-network
+healthcheck:
+test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+interval: 10s
+timeout: 5s
+retries: 5
+
+# Networks Definition
+
+networks:
+app-network:
+driver: bridge
+"
+this is my dockerfile:
+"
+
+# Docker/Dockerfile (Production Ready)
+
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+WORKDIR /app
+
+RUN addgroup --system app && adduser --system --ingroup app app
+
+# Copy requirements first for caching
+
+COPY ./example-flask-crud/requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+ pip install --no-cache-dir -r requirements.txt
+
+# Copy the runtime entrypoint script
+
+COPY ./entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh && chown app:app /entrypoint.sh
+
+# Copy ALL application code, including the 'migrations' directory
+
+# which was checked into Git during development.
+
+COPY ./example-flask-crud /app
+
+RUN chown -R app:app /app
+
+USER app
+
+EXPOSE 5000
+
+ENTRYPOINT ["/entrypoint.sh"]
+"
+
+this is my entrypoint.sh:
+"
+#!/bin/sh
+
+# Docker/entrypoint.sh
+
+set -e # Abort on any error
+
+# wait_for_postgres() { # This function is less relevant for external DBs like Aurora
+
+# echo "Waiting for postgres..."
+
+# # The old sleep was a very basic wait.
+
+# # For Aurora, the expectation is it's up, or the app handles connection issues.
+
+# # If you absolutely need a wait here, you might need to install 'pg_isready'
+
+# # or 'psql' in your Dockerfile to actively check the Aurora endpoint.
+
+# # For now, we'll assume the app/driver handles initial connection.
+
+# echo "Proceeding with assumption that external database is reachable."
+
+# }
+
+# wait_for_postgres # Consider removing or adapting this call
+
+# Run database migrations
+
+# FLASK_APP should be set via .env in docker-compose
+
+echo "Running database migrations against ${DATABASE_URL}..." # Good to log the target
+flask db upgrade
+echo "Database migrations complete."
+
+# Start Gunicorn
+
+echo "Starting Gunicorn..."
+exec gunicorn --bind 0.0.0.0:5000 crudapp:app
+"
+
+this is my entiarypoint:
+"
+#!/bin/bash
+
+# init-flask-db.sh - Script to perform one-time Flask-Migrate setup
+
+set -e # Exit immediately if a command exits with a non-zero status.
+
+echo "Ensuring application image is built..."
+
+# Ensure .env file is present and configured for Aurora if flask db migrate needs it
+
+if [ ! -f .env ]; then
+echo "ERROR: .env file not found. Please create it and configure DATABASE_URL."
+exit 1
+fi
+
+# Source .env to make DATABASE_URL available if needed by commands below,
+
+# though docker-compose run usually handles this if env_file is specified.
+
+# However, for direct flask commands outside compose, this might be useful.
+
+# export $(grep -v '^#' .env | xargs)
+
+docker-compose build application
+
+# Check if migrations directory already exists locally
+
+if [ -d "example-flask-crud/migrations" ]; then
+echo "'example-flask-crud/migrations' directory already exists."
+else
+echo "Running flask db init (as root in temporary container)..."
+
+# This command doesn't need DB connectivity
+
+docker-compose run --rm \
+ -u root \
+ -v "$(pwd)/example-flask-crud:/app" \
+ --entrypoint "" \
+ application flask db init
+echo "Flask db init completed."
+fi
+
+# No need to start 'db' service as it's removed.
+
+# echo "Starting database service..."
+
+# docker-compose up -d db
+
+# echo "Waiting for database to be ready (approx 15s)..."
+
+# sleep 15
+
+# docker-compose ps db # Show DB status
+
+echo "Running flask db migrate (as root in temporary container)..."
+echo "This will generate the initial migration script based on your models."
+echo "It will use DATABASE_URL from your .env file, which should point to Aurora."
+
+# Ensure your Aurora DB is accessible from where you run this script,
+
+# or that flask db migrate can generate a script without full connectivity
+
+# for the very first migration (often it can, just comparing to models).
+
+docker-compose run --rm \
+ -u root \
+ -e DATABASE_URL=${DATABASE_URL} ` # Explicitly pass, ensure .env is sourced or vars set` \
+  -v "$(pwd)/example-flask-crud:/app" \
+ --entrypoint "" \
+ application flask db migrate -m "Initial migration setup"
+echo "Flask db migrate completed. A new migration script should be in example-flask-crud/migrations/versions/"
+
+# No 'db' service to stop
+
+# echo "Stopping database service..."
+
+# docker-compose down
+
+echo "Fixing ownership of migrations directory (if it was created)..."
+if [ -d "example-flask-crud/migrations" ]; then
+
+# Use sudo only if necessary, try without first if you run Docker as non-root
+
+# or have user namespace remapping.
+
+# If you run docker-compose as root, then sudo chown is needed.
+
+# If you run docker-compose as your user, this might not be needed or
+
+# 'sudo' might not be the right command.
+
+# A safer alternative is to ensure the container runs as your user ID for this step.
+
+# For simplicity, assuming sudo is available and needed if files are root-owned.
+
+if sudo -n true 2>/dev/null; then # Check if sudo can be run without password
+sudo chown -R $(id -u):$(id -g) example-flask-crud/migrations
+else
+echo "Attempting chown without sudo. If it fails, you may need to run manually:"
+echo " sudo chown -R $(id -u):$(id -g) example-flask-crud/migrations"
+chown -R $(id -u):$(id -g) example-flask-crud/migrations
+fi
+echo "Ownership fixed."
+fi
+
+echo "------------------------------------------------------------------"
+echo "Initialization complete."
+echo "IMPORTANT: Add 'example-flask-crud/migrations' to Git and commit!"
+echo "The 'flask db upgrade' in entrypoint.sh will apply these to Aurora."
+echo "You can now run 'docker-compose up -d application' to start the application"
+echo "locally, connecting to your AWS Aurora database."
+echo "Ensure your local IP is whitelisted in Aurora's security group if testing this way."
+echo "------------------------------------------------------------------"
+"
+
+i would to complete the task with terraform as you can you can see i will be setting up working invorment with amazon aurora as the database.
+here is my network design:
+"
+
+# AWS Cloud Architecture & Security Group Policy
+
+## Region
+
+- **Region Name:** EUW1 (Europe-West 1)
+
+---
+
+## Virtual Private Cloud (VPC)
+
+- **CIDR:** 10.0.0.0/16
+
+### Subnets:
+
+- **Public Subnet:** 10.0.0.0/24
+- **Private Subnet:** 10.0.1.0/24
+
+---
+
+## Resources and Traffic Flow
+
+### Public Subnet (10.0.0.0/24)
+
+#### 1. Internet Gateway
+
+- Allows external traffic into the VPC.
+- Connected to the Application Load Balancer.
+
+#### 2. Application Load Balancer (ALB)
+
+- Receives HTTP/HTTPS traffic from the Internet.
+- Forwards traffic to application servers (hosted on ECS) in the private subnet.
+
+---
+
+### Private Subnet (10.0.1.0/24)
+
+#### 1. Elastic Container Service (ECS)
+
+- Hosts application servers (e.g., Flask + NGINX).
+- Pulls container images from Amazon Container Registry (ECR).
+- Connects to Aurora Database.
+
+#### 2. Aurora Database
+
+- Only accepts connections from ECS application servers.
+
+#### 3. Amazon Container Registry (ECR)
+
+- Stores Docker container images.
+- Provides images to ECS.
+- Sends logs to Amazon CloudWatch.
+
+#### 4. Amazon CloudWatch
+
+- Collects logs from:
+  - Amazon Container Registry (ECR)
+  - Aurora Database
+
+---
+
+## Security Group Rules
+
+| **Rule Name**                     | **Source**                | **Destination**                     | **Ports** | **Purpose**                                     |
+| --------------------------------- | ------------------------- | ----------------------------------- | --------- | ----------------------------------------------- |
+| Public_subnet_Inbound             | 0.0.0.0/0                 | Application Load Balancer           | 80, 443   | Allow HTTP/HTTPS traffic from the internet      |
+| Public_subnet_outbound            | Application Load Balancer | 0.0.0.0/0                           | 0 - 65535 | Allow outbound traffic from ALB to the internet |
+| Private_subnet_inbound            | Application Load Balancer | Application Servers (Flask + NGINX) | 80        | Allow ALB to reach ECS                          |
+| Private_subnet_outbound           | Application Servers       | Database                            | 3306      | Allow app servers to connect to Aurora DB       |
+| Private_subnet_inbound (Database) | Application Servers       | Database                            | 3306      | Only allow DB connections from the app servers  |
+
+---
+
+## Traffic Flow Summary
+
+1. **Clients** → Internet Gateway → Application Load Balancer (ALB)
+2. **ALB** → Application Servers in ECS (port 80)
+3. **ECS (App Servers)** → Aurora Database (port 3306)
+4. **ECS** ← Container images from ECR
+5. **ECR** & **Aurora DB** → Logs → Amazon CloudWatch
+
+---
+
+## Notes
+
+- All resources are deployed inside a single VPC.
+- Application services reside in a private subnet for better security.
+- The ALB in the public subnet handles ingress traffic securely.
+- CloudWatch enables monitoring and logging for both container and database layers.
+
+this is the content of the example-flask-crud:
+config.py:
+"
+
+# app/config.py
+
+import os
+
+class Config(object): # Always use environment variables in containerized setups
+SECRET_KEY = os.environ.get('SECRET_KEY')
+SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
+SQLALCHEMY_TRACK_MODIFICATIONS = False # Good practice to disable if not needed
+
+    # Basic error check: Ensure essential variables are set
+    if not SECRET_KEY:
+        raise ValueError("No SECRET_KEY set for Flask application")
+    if not SQLALCHEMY_DATABASE_URI:
+        raise ValueError("No DATABASE_URL set for Flask application")
+
+"
+modeles.py:
+"
+from app import db
+
+class Entry(db.Model):
+id = db.Column(db.Integer, primary_key=True)
+title = db.Column(db.String(64), index=True, nullable=False)
+description = db.Column(db.String(120), index=True, nullable=False)
+status = db.Column(db.Boolean, default=False)
+"
+
+routes.py:
+"
+from flask import render_template, request, redirect
+from app import app, db
+from app.models import Entry
+
+jedi = "of the jedi"
+
+@app.route('/')
+@app.route('/index')
+def index(): # entries = [
+
+# {
+
+# 'id' : 1,
+
+# 'title': 'test title 1',
+
+# 'description' : 'test desc 1',
+
+# 'status' : True
+
+# },
+
+# {
+
+# 'id': 2,
+
+# 'title': 'test title 2',
+
+# 'description': 'test desc 2',
+
+# 'status': False
+
+# }
+
+# ]
+
+entries = Entry.query.all()
+return render_template('index.html', entries=entries)
+
+@app.route('/add', methods=['POST'])
+def add():
+if request.method == 'POST':
+form = request.form
+title = form.get('title')
+description = form.get('description')
+if not title or description:
+entry = Entry(title = title, description = description)
+db.session.add(entry)
+db.session.commit()
+return redirect('/')
+
+    return "of the jedi"
+
+@app.route('/update/<int:id>')
+def updateRoute(id):
+if not id or id != 0:
+entry = Entry.query.get(id)
+if entry:
+return render_template('update.html', entry=entry)
+
+    return "of the jedi"
+
+@app.route('/update/<int:id>', methods=['POST'])
+def update(id):
+if not id or id != 0:
+entry = Entry.query.get(id)
+if entry:
+form = request.form
+title = form.get('title')
+description = form.get('description')
+entry.title = title
+entry.description = description
+db.session.commit()
+return redirect('/')
+
+    return "of the jedi"
+
+@app.route('/delete/<int:id>')
+def delete(id):
+if not id or id != 0:
+entry = Entry.query.get(id)
+if entry:
+db.session.delete(entry)
+db.session.commit()
+return redirect('/')
+
+    return "of the jedi"
+
+@app.route('/turn/<int:id>')
+def turn(id):
+if not id or id != 0:
+entry = Entry.query.get(id)
+if entry:
+entry.status = not entry.status
+db.session.commit()
+return redirect('/')
+
+    return "of the jedi"
+
+# @app.errorhandler(Exception)
+
+# def error_page(e):
+
+# return "of the jedi"
+
+"
+this is the crudapp.py
+"
+from app import app, db
+from app.models import Entry
+
+"
+"
