@@ -9,7 +9,7 @@ resource "aws_ecs_task_definition" "app" {
   requires_compatibilities = ["FARGATE"]
   cpu                      = var.app_cpu
   memory                   = var.app_memory
-  execution_role_arn = "arn:aws:iam::125755581655:role/voclabs"
+  execution_role_arn = "arn:aws:iam::125755581655:role/LabRole"
 
   container_definitions = jsonencode([
     {
