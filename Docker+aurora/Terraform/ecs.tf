@@ -23,8 +23,9 @@ resource "aws_ecs_task_definition" "app" {
         }
       ]
   	  secrets = [{
-        name = "Database_URL"
-        valueFrom = aws_ssm_parameter.db_url_ssm_arn
+        name = "DATABASE_URL"
+        valueFrom = aws_ssm_parameter.db_url_ssm.arn
+        
       },
       {
         name = "SECRET_KEY"

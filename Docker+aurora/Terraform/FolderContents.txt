@@ -1,0 +1,1084 @@
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\alb_outputs.tf
+{
+output "alb_dns_name" {
+description = "Public Dns name for the Application load balancer. You can access the application though this value"
+value = aws_lb.app_alb.dns_name
+}
+
+output "alb_http_url" {
+  description = "HTTP url to access the application (if user uses http)"
+  value = "http://${aws_lb.app_alb.dns_name}"
+}
+
+output "alb_https_url" {
+  description = "HTTPS URL to access the application (most users will have https enable, just to make sure)."
+  value       = var.enable_https ? "https://${aws_lb.app_alb.dns_name}" : "HTTPS not enabled."
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\alb_variables.tf
+{
+variable "health_check_path" {
+  description = "Path for ALB health checks"
+  type        = string
+  default     = "/"
+}
+
+variable "enable_https" {
+  description = "Enable HTTPS listener on ALB"
+  type        = bool
+  default     = false
+}
+
+variable "acm_certificate_arn" {
+  description = "ARN of the ACM certificate for HTTPS"
+  type        = string
+  default     = ""
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\alb.tf
+{
+resource "aws_lb" "app_alb" {
+  name               = "${local.project_tag}-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = aws_subnet.public[*].id
+  tags               = local.tags
+}
+
+resource "aws_lb_target_group" "app_tg" {
+  name     = "${local.project_tag}-tg"
+  port     = 5000
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+  health_check {
+    path                = var.health_check_path
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    matcher             = "200"
+  }
+  tags = local.tags
+}
+
+resource "aws_lb_listener" "frontend_http" {
+  load_balancer_arn = aws_lb.app_alb.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type = var.enable_https ? "redirect" : "forward"
+
+    dynamic "redirect" {
+      for_each = var.enable_https ? [1] : []
+      content {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+    target_group_arn = var.enable_https ? null : aws_lb_target_group.app_tg.arn
+  }
+}
+
+resource "aws_lb_listener" "frontend_https" {
+  count = var.enable_https ? 1 : 0
+
+  load_balancer_arn = aws_lb.app_alb.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-2016-08" # Or a newer recommended policy
+  certificate_arn   = var.acm_certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app_tg.arn
+  }
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\application_variables.tf
+{
+variable "app_image_uri" {
+  description = "Required: Full ECR URI for the flask app image"
+  type = string
+}
+
+variable "app_container_port" {
+  description = "Port the application container listens on"
+  type = number
+  default = 5000
+}
+
+variable "app_cpu" {
+  description = "cpu units for ECS Fargate task"
+  type = number
+  default = 512
+}
+
+variable "app_memory" {
+  description = "Memory in Mib for ECS Fargete task"
+  type = number
+  default = 1024
+}
+
+variable "app_desired_count" {
+  description = "Desired nubmer of application tasks"
+  type = number
+  default = 1
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\cloudwatch_outputs.tf
+{
+output "cloudwatch_log_group_ecs" {
+  description = "CloudWatch log group for ECS application logs"
+  value = aws_cloudwatch_log_group.ecs_service_logs.name
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\data.tf
+{
+data "aws_caller_identity" "current" {}
+
+data "aws_region" "current" {}
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+data "aws_iam_policy_document" "ecs_task_execution_assume_role_policy" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "ecs_task_execution_permissions" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "ecr:GetAuthorizationToken",
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:BatchGetImage",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+    resources = ["*"]
+  }
+  statement {
+    effect  = "Allow"
+    actions = ["secretsmanager:GetSecretValue"]
+    resources = [
+      aws_secretsmanager_secret.flask_secret.arn
+    ]
+  }
+  statement {
+    effect  = "Allow"
+    actions = ["ssm:GetParameters", "ssm:GetParameter"]
+    resources = [
+      aws_ssm_parameter.db_url_ssm.arn
+    ]
+  }
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\database_variables.tf
+{
+variable "db_name" {
+  description = "Database name for Aurora PostgreSQL"
+  type = string
+  default = "flaskCrudAppDb"
+}
+
+variable "db_username" {
+  description = "Master username for Aurora DB"
+  type = string
+  default = "dbAdmin"
+}
+
+variable "db_engine_version" {
+  description = "Aurora postgreSQL engine version"
+  type = string
+  default = "17"
+}
+
+variable "db_instance_class" {
+  description = "Instance class for Aurora DB instance"
+  type = string
+  default = "db.t3.medium"
+}
+
+variable "db_instance_count" {
+  description = "Number of DB instances in the Aurora cluster"
+  type = number
+  default = 1
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\ecr_outputs.tf
+{
+output "ecr_repository_url" { 
+  description = "URL of the ECR repository. This is where our Docker image is going to be pushed"
+  value       = aws_ecr_repository.app_repo.repository_url # Corrected
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\ecr.tf
+{
+resource "aws_ecr_repository" "app_repo" {
+  name                 = "${local.project_tag}-app"
+  image_tag_mutability = "MUTABLE"
+  tags                 = local.tags
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\ecs_outputs.tf
+{
+# ecs_outputs.tf
+output "ecs_cluster_name" {
+  description = "Name of the ECS cluster"
+  value       = aws_ecs_cluster.main.name 
+}
+output "ecs_service_name" {
+  description = "Name of the ECS service running the application"
+  value       = aws_ecs_service.app.name 
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\ecs.tf
+{
+resource "aws_ecs_cluster" "main" {
+  name = "${local.project_tag}-ecs-cluster"
+  tags = local.tags
+}
+
+resource "aws_ecs_task_definition" "app" {
+  family                   = "${local.project_tag}-task"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = var.app_cpu
+  memory                   = var.app_memory
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "app"
+      image     = var.app_image_uri
+      essential = true
+      portMappings = [
+        {
+          containerPort = 5000
+          protocol      = "tcp"
+        }
+      ]
+  	  secrets = [{
+        name = "Database_URL"
+        valueFrom = aws_ssm_parameter.db_url_ssm_arn
+      },
+      {
+        name = "SECRET_KEY"
+        valueFrom = aws_secretsmanager_secret.flask_secret.arn
+      }
+      ]
+      environment = [
+        {name = "FLASK_ENV", value = "production"},
+        {name = "PYTHONUNBUFFERED", value = "1"}
+      ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.ecs_service_logs.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "ecs"
+        }
+      }
+    }
+  ])
+}
+
+resource "aws_ecs_service" "app" {
+  name            = "${local.project_tag}-ecs-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.app.arn
+  desired_count   = var.app_desired_count
+  launch_type     = "FARGATE"
+  network_configuration {
+    subnets         = aws_subnet.private[*].id
+    security_groups = [aws_security_group.ecs_service.id]
+    assign_public_ip = false
+  }
+  load_balancer {
+    target_group_arn = aws_lb_target_group.app_tg.arn
+    container_name   = "app"
+    container_port   = 5000
+  }
+  depends_on = [aws_lb_listener.frontend_http]
+  tags = local.tags
+}
+
+resource "aws_cloudwatch_log_group" "ecs_service_logs" {
+  name              = "/ecs/${local.project_tag}-app" # Use -app or similar differentiator
+  retention_in_days = 7
+  tags              = local.tags
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\FolderContents.txt
+{
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\alb_outputs.tf
+{
+output "alb_dns_name" {
+description = "Public Dns name for the Application load balancer. You can access the application though this value"
+value = aws_lb.app_alb.dns_name
+}
+
+output "alb_http_url" {
+  description = "HTTP url to access the application (if user uses http)"
+  value = "http://${aws_lb.app_alb.dns_name}"
+}
+
+output "alb_https_url" {
+  description = "HTTPS URL to access the application (most users will have https enable, just to make sure)."
+  value       = var.enable_https ? "https://${aws_lb.app_alb.dns_name}" : "HTTPS not enabled."
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\alb_variables.tf
+{
+variable "health_check_path" {
+  description = "Path for ALB health checks"
+  type        = string
+  default     = "/"
+}
+
+variable "enable_https" {
+  description = "Enable HTTPS listener on ALB"
+  type        = bool
+  default     = false
+}
+
+variable "acm_certificate_arn" {
+  description = "ARN of the ACM certificate for HTTPS"
+  type        = string
+  default     = ""
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\alb.tf
+{
+resource "aws_lb" "app_alb" {
+  name               = "${local.project_tag}-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = aws_subnet.public[*].id
+  tags               = local.tags
+}
+
+resource "aws_lb_target_group" "app_tg" {
+  name     = "${local.project_tag}-tg"
+  port     = 5000
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+  health_check {
+    path                = var.health_check_path
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    matcher             = "200"
+  }
+  tags = local.tags
+}
+
+resource "aws_lb_listener" "frontend_http" {
+  load_balancer_arn = aws_lb.app_alb.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type = var.enable_https ? "redirect" : "forward"
+
+    dynamic "redirect" {
+      for_each = var.enable_https ? [1] : []
+      content {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+    target_group_arn = var.enable_https ? null : aws_lb_target_group.app_tg.arn
+  }
+}
+
+resource "aws_lb_listener" "frontend_https" {
+  count = var.enable_https ? 1 : 0
+
+  load_balancer_arn = aws_lb.app_alb.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-2016-08" # Or a newer recommended policy
+  certificate_arn   = var.acm_certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app_tg.arn
+  }
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\application_variables.tf
+{
+variable "app_image_uri" {
+  description = "Required: Full ECR URI for the flask app image"
+  type = string
+}
+
+variable "app_container_port" {
+  description = "Port the application container listens on"
+  type = number
+  default = 5000
+}
+
+variable "app_cpu" {
+  description = "cpu units for ECS Fargate task"
+  type = number
+  default = 512
+}
+
+variable "app_memory" {
+  description = "Memory in Mib for ECS Fargete task"
+  type = number
+  default = 1024
+}
+
+variable "app_desired_count" {
+  description = "Desired nubmer of application tasks"
+  type = number
+  default = 1
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\cloudwatch_outputs.tf
+{
+output "cloudwatch_log_group_ecs" {
+  description = "CloudWatch log group for ECS application logs"
+  value = aws_cloudwatch_log_group.ecs_service_logs.name
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\data.tf
+{
+data "aws_caller_identity" "current" {}
+
+data "aws_region" "current" {}
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+data "aws_iam_policy_document" "ecs_task_execution_assume_role_policy" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "ecs_task_execution_permissions" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "ecr:GetAuthorizationToken",
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:BatchGetImage",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+    resources = ["*"]
+  }
+  statement {
+    effect  = "Allow"
+    actions = ["secretsmanager:GetSecretValue"]
+    resources = [
+      aws_secretsmanager_secret.flask_secret.arn
+    ]
+  }
+  statement {
+    effect  = "Allow"
+    actions = ["ssm:GetParameters", "ssm:GetParameter"]
+    resources = [
+      aws_ssm_parameter.db_url_ssm.arn
+    ]
+  }
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\database_variables.tf
+{
+variable "db_name" {
+  description = "Database name for Aurora PostgreSQL"
+  type = string
+  default = "flaskCrudAppDb"
+}
+
+variable "db_username" {
+  description = "Master username for Aurora DB"
+  type = string
+  default = "dbAdmin"
+}
+
+variable "db_engine_version" {
+  description = "Aurora postgreSQL engine version"
+  type = string
+  default = "17"
+}
+
+variable "db_instance_class" {
+  description = "Instance class for Aurora DB instance"
+  type = string
+  default = "db.t3.medium"
+}
+
+variable "db_instance_count" {
+  description = "Number of DB instances in the Aurora cluster"
+  type = number
+  default = 1
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\ecr_outputs.tf
+{
+output "ecr_repository_url" { 
+  description = "URL of the ECR repository. This is where our Docker image is going to be pushed"
+  value       = aws_ecr_repository.app_repo.repository_url # Corrected
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\ecr.tf
+{
+resource "aws_ecr_repository" "app_repo" {
+  name                 = "${local.project_tag}-app"
+  image_tag_mutability = "MUTABLE"
+  tags                 = local.tags
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\ecs_outputs.tf
+{
+# ecs_outputs.tf
+output "ecs_cluster_name" {
+  description = "Name of the ECS cluster"
+  value       = aws_ecs_cluster.main.name 
+}
+output "ecs_service_name" {
+  description = "Name of the ECS service running the application"
+  value       = aws_ecs_service.app.name 
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\ecs.tf
+{
+resource "aws_ecs_cluster" "main" {
+  name = "${local.project_tag}-ecs-cluster"
+  tags = local.tags
+}
+
+resource "aws_ecs_task_definition" "app" {
+  family                   = "${local.project_tag}-task"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = var.app_cpu
+  memory                   = var.app_memory
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "app"
+      image     = var.app_image_uri
+      essential = true
+      portMappings = [
+        {
+          containerPort = 5000
+          protocol      = "tcp"
+        }
+      ]
+  	  secrets = [{
+        name = "Database_URL"
+        valueFrom = aws_ssm_parameter.db_url_ssm_arn
+      },
+      {
+        name = "SECRET_KEY"
+        valueFrom = aws_secretsmanager_secret.flask_secret.arn
+      }
+      ]
+      environment = [
+        {name = "FLASK_ENV", value = "production"},
+        {name = "PYTHONUNBUFFERED", value = "1"}
+      ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.ecs_service_logs.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "ecs"
+        }
+      }
+    }
+  ])
+}
+
+resource "aws_ecs_service" "app" {
+  name            = "${local.project_tag}-ecs-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.app.arn
+  desired_count   = var.app_desired_count
+  launch_type     = "FARGATE"
+  network_configuration {
+    subnets         = aws_subnet.private[*].id
+    security_groups = [aws_security_group.ecs_service.id]
+    assign_public_ip = false
+  }
+  load_balancer {
+    target_group_arn = aws_lb_target_group.app_tg.arn
+    container_name   = "app"
+    container_port   = 5000
+  }
+  depends_on = [aws_lb_listener.frontend_http]
+  tags = local.tags
+}
+
+resource "aws_cloudwatch_log_group" "ecs_service_logs" {
+  name              = "/ecs/${local.project_tag}-app" # Use -app or similar differentiator
+  retention_in_days = 7
+  tags              = local.tags
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\FolderContents.txt
+{
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\global_variables.tf
+{
+variable "aws_region" {
+  description = "AWS region for deployment"
+  type = string
+  default = "us-east-1"
+}
+
+variable "project_name" {
+  description = "Unique name for the project to use in prefix resources"
+  type = string
+  default = "flask-crud-r0984339"
+}
+
+variable "az_count" {
+  description = "Number of availability Zones to use (minimum 2 for HA) but for test we will do 1"
+  type = number
+  default = 2
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\iam.tf
+{
+resource "aws_iam_role" "ecs_task_execution_role" {
+  name = "${local.project_tag}-ecs-task-execution-role"
+  assume_role_policy = data.aws_iam_policy_document.ecs_task_execution_assume_role_policy.json
+  tags = local.tags
+}
+
+resource "aws_iam_policy" "ecs_task_execution_policy" {
+  name   = "${local.project_tag}-ecs-task-execution-policy"
+  policy = data.aws_iam_policy_document.ecs_task_execution_permissions.json
+  tags   = local.tags
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_attach" {
+  role       = aws_iam_role.ecs_task_execution_role.name
+  policy_arn = aws_iam_policy.ecs_task_execution_policy.arn
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\locals.tf
+{
+locals {
+  project_tag = var.project_name
+  tags = {
+    project = local.project_tag
+    Terraform = "true"
+  }
+  db_port = 5432
+
+  azs = slice(data.aws_availability_zones.available.names, 0, var.az_count)
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\networking_outputs.tf
+{
+output "security_group_ids_map" {
+  description = "Map of created security groups (Name -> ID)."
+  value = {
+    alb         = aws_security_group.alb.id
+    ecs_service = aws_security_group.ecs_service.id
+    db_aurora   = aws_security_group.db_aurora.id
+  }
+}
+
+output "route_table_ids_map" {
+  description = "Map of created route tables (Name -> ID)."
+  value = {
+    public      = aws_route_table.public.id
+    private_az0 = var.az_count > 0 ? aws_route_table.private[0].id : "N/A"
+    private_az1 = var.az_count > 1 ? aws_route_table.private[1].id : "N/A"
+  }
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\networking_variables.tf
+{
+variable "vpc_cidr" {
+  description = "CIDR block for the vpc"
+  type = string
+  default = "10.0.0.0/16"
+}
+
+variable "public_subnet_offset" {
+  description = "Offset for public subnet CIDR calculations"
+  type = number
+  default = 0
+}
+
+variable "private_subnet_offset" {
+  description = "Offset for private subnet CIDR calculations"
+  type = number
+  default = 100
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\provider.tf
+{
+provider "aws" {
+  region = var.aws_region
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\rds_outputs.tf
+{
+output "rds_cluster_endpoint" {
+  description = "Writer endpoint of the RDS Aurora cluster"
+  value = aws_rds_cluster.main.endpoint
+}
+
+output "rds_cluster_reader_endpoint" {
+  description = "Reader endpoint of the RDS aurora cluster (need to run multiple instances)"
+  value = aws_rds_cluster.main.reader_endpoint
+}
+
+output "rds_cluster_port" {
+  description = "Port of the RDS Aurora cluster"
+  value = aws_rds_cluster.main.port
+}
+
+output "database_name_output" {
+  description = "Name of the database Created in Aurora"
+  value = var.db_name
+}
+
+output "database_master_username_output" {
+  description = "Master username for the aurora database"
+  value = var.db_username
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\rds.tf
+{
+resource "random_password" "db_password" {
+  length           = 16
+  special          = true
+  override_special = "_%@/"
+}
+
+resource "aws_secretsmanager_secret" "db_master_password" {
+  name = "${local.project_tag}/db-master-password"
+  tags = local.tags
+}
+
+resource "aws_secretsmanager_secret_version" "db_master_password" {
+  secret_id     = aws_secretsmanager_secret.db_master_password.id
+  secret_string = random_password.db_password.result
+}
+
+resource "aws_db_subnet_group" "aurora" {
+  name       = "${local.project_tag}-aurora-sng"
+  subnet_ids = aws_subnet.private[*].id
+  tags = merge(local.tags, {
+    Name = "${local.project_tag}-aurora-sng"
+  })
+}
+
+resource "aws_rds_cluster" "main" {
+  cluster_identifier      = "${local.project_tag}-aurora-cluster"
+  engine                  = "aurora-postgresql"
+  engine_mode             = "provisioned"
+  engine_version          = var.db_engine_version
+  database_name           = var.db_name
+  master_username         = var.db_username
+  master_password         = random_password.db_password.result
+  db_subnet_group_name    = aws_db_subnet_group.aurora.name
+  vpc_security_group_ids  = [aws_security_group.db_aurora.id]
+  skip_final_snapshot     = true
+  backup_retention_period = 7
+  preferred_backup_window = "02:00-03:00"
+  storage_encrypted       = true
+  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+  tags = merge(local.tags, { Name = "${local.project_tag}-aurora-cluster", Tier = "database" })
+}
+
+resource "aws_rds_cluster_instance" "main" {
+  count              = var.db_instance_count
+  identifier         = "${local.project_tag}-aurora-instance-${count.index}"
+  cluster_identifier = aws_rds_cluster.main.id
+  instance_class     = var.db_instance_class
+  engine             = aws_rds_cluster.main.engine
+  engine_version     = aws_rds_cluster.main.engine_version
+  publicly_accessible = false
+  tags = merge(local.tags, { Name = "${local.project_tag}-aurora-instance-${count.index}", Tier = "database" })
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\secrets_outputs.tf
+{
+output "database_master_password_secret_arn" {
+  description = "ARN of the Secrets Manager secret storing the DB master passwords"
+  value = aws_secretmanager_secret.db_master_password.arn
+}
+
+output "flask_secret_key_arn" {
+  description = "ARN of the Secrets Manager secret storing the Flask Secret_key"
+  value = aws_secretmanager_secret.flask_secret.arn
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\secrets.tf
+{
+
+resource "random_password" "flask_secret_key_gen" {
+  length  = 32
+  special = false # Flask secret keys are often simpler strings
+}
+
+resource "aws_secretsmanager_secret" "flask_secret" {
+  name = "${local.project_tag}/flask-secret-key"
+  tags = local.tags
+}
+
+resource "aws_secretsmanager_secret_version" "flask_secret" {
+  secret_id     = aws_secretsmanager_secret.flask_secret.id
+  secret_string = random_password.flask_secret_key_gen.result
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\security_group_rules.tf
+{
+resource "aws_security_group_rule" "allow_alb_to_ecs" {
+  type                     = "ingress"
+  from_port                = 5000
+  to_port                  = 5000
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.ecs_service.id
+  source_security_group_id = aws_security_group.alb.id
+  description              = "Allow ALB to ECS Service"
+}
+
+resource "aws_security_group_rule" "allow_ecs_to_db" {
+  type                     = "ingress"
+  from_port                = local.db_port
+  to_port                  = local.db_port
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.db_aurora.id
+  source_security_group_id = aws_security_group.ecs_service.id
+  description              = "Allow ECS tasks to access DB"
+}
+
+resource "aws_security_group_rule" "allow_outbound" {
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  security_group_id = aws_security_group.ecs_service.id
+  cidr_blocks       = ["0.0.0.0/0"]
+  description       = "Allow all outbound traffic from ECS tasks"
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\security_groups.tf
+{
+resource "aws_security_group" "db_aurora" {
+  name        = "${local.project_tag}-db-aurora-sg"
+  description = "Allow PostgreSQL traffic from ECS Service"
+  vpc_id      = aws_vpc.main.id
+  tags = merge(local.tags, { Name = "${local.project_tag}-db-sg", Tier = "database" })
+}
+
+resource "aws_security_group" "ecs_service" {
+  name        = "${local.project_tag}-ecs-service-sg"
+  description = "Allow traffic from ALB to ECS tasks and allow outbound to DB and Internet (via NAT)"
+  vpc_id      = aws_vpc.main.id
+  tags        = merge(local.tags, { Name = "${local.project_tag}-ecs-sg", Tier = "application" })
+}
+
+resource "aws_security_group" "alb" {
+  name        = "${local.project_tag}-alb-sg"
+  description = "Allow HTTP/S traffic from internet to ALB"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "HTTP from anywhere"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    description = "HTTPS from anywhere"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.tags, { Name = "${local.project_tag}-alb-sg", Tier = "frontend" })
+}
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\security.tf
+{
+}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\ssm_outputs.tf
+{
+output "database_url_ssm_parameter_name" {
+  description = "Name of the SSM Parameter storing the full database connection url (database url) "
+  value = aws_ssm_parameter.db_url_ssm.name
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\ssm.tf
+{
+resource "aws_ssm_parameter" "db_url_ssm" {
+  name  = "/${local.project_tag}/DATABASE_URL" # Use a path-based name
+  type  = "SecureString"                         # Encrypts with default KMS key for SSM
+  value = "postgresql://${var.db_username}:${random_password.db_password.result}@${aws_rds_cluster.main.endpoint}:${local.db_port}/${var.db_name}"
+  tags  = local.tags
+
+  # Ensure this depends on the RDS cluster and the password random resource
+  depends_on = [
+    aws_rds_cluster.main,
+    random_password.db_password
+  ]
+}}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\terraform.tfvars
+{
+# terraform.tfvars
+
+aws_region   = "us-east-1" # Or your chosen region from global_variables.tf
+project_name = "flask-crud-r0984339" # From global_variables.tf
+
+# You will set this after building and pushing your Docker image
+# app_image_uri = "YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/flask-crud-r0984339-app:latest"
+
+# --- ALB Variables (Only if doing HTTPS) ---
+# enable_https        = true
+# acm_certificate_arn = "arn:aws:acm:YOUR_REGION:YOUR_ACCOUNT_ID:certificate/YOUR_CERT_ID"}
+
+File Name: \school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\vpc.tf
+{
+resource "aws_vpc" "main" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+  tags = merge(local.tags, {
+    Name = "${local.project_tag}-vpc"
+  })
+}
+
+resource "aws_internet_gateway" "gw" {
+  vpc_id = aws_vpc.main.id
+  tags = merge(local.tags, {
+    Name = "${local.project_tag}-igw"
+  })
+}
+
+resource "aws_subnet" "public" {
+  count             = var.az_count
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + var.public_subnet_offset)
+  availability_zone = local.azs[count.index]
+  map_public_ip_on_launch = true
+  tags = merge(local.tags, {
+    Name = "${local.project_tag}-public-subnet-${local.azs[count.index]}"
+    Tier = "frontend"
+  })
+}
+
+resource "aws_subnet" "private" {
+  count             = var.az_count
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + var.private_subnet_offset)
+  availability_zone = local.azs[count.index]
+  tags = merge(local.tags, {
+    Name = "${local.project_tag}-private-subnet-${local.azs[count.index]}"
+    Tier = "application-database"
+  })
+}
+
+resource "aws_eip" "nat_eip" {
+  count      = var.az_count
+  domain     = "vpc"
+  depends_on = [aws_internet_gateway.gw]
+  tags = merge(local.tags, {
+    Name = "${local.project_tag}-nat-eip-${local.azs[count.index]}"
+  })
+}
+
+resource "aws_nat_gateway" "nat" {
+  count         = var.az_count
+  allocation_id = aws_eip.nat_eip[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
+  tags = merge(local.tags, {
+    Name = "${local.project_tag}-nat-gw-${local.azs[count.index]}"
+  })
+  depends_on = [aws_internet_gateway.gw]
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.gw.id
+  }
+  tags = merge(local.tags, {
+    Name = "${local.project_tag}-public-rt"
+  })
+}
+
+resource "aws_route_table_association" "public" {
+  count          = var.az_count
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table" "private" {
+  count  = var.az_count
+  vpc_id = aws_vpc.main.id
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat[count.index].id
+  }
+  tags = merge(local.tags, {
+    Name = "${local.project_tag}-private-rt-${local.azs[count.index]}"
+  })
+}
+
+resource "aws_route_table_association" "private" {
+  count          = var.az_count
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private[count.index].id
+}
+}
+
