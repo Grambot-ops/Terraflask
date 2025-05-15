@@ -7,14 +7,14 @@ resource "aws_ecs_task_definition" "app" {
   family                   = "${local.project_tag}-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = var.ecs_cpu
-  memory                   = var.ecs_memory
+  cpu                      = var.app_cpu
+  memory                   = var.app_memory
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
 
   container_definitions = jsonencode([
     {
       name      = "app"
-      image     = "${aws_ecr_repository.app_repo.repository_url}:latest"
+      image     = var.app_image_uri
       essential = true
       portMappings = [
         {
@@ -22,16 +22,23 @@ resource "aws_ecs_task_definition" "app" {
           protocol      = "tcp"
         }
       ]
+  	  secrets = [{
+        name = "Database_URL"
+        valueFrom = aws_ssm_parameter.db_url_ssm_arn
+      },
+      {
+        name = "SECRET_KEY"
+        valueFrom = aws_secretsmanager_secret.flask_secret.arn
+      }
+      ]
       environment = [
-        {
-          name  = "DATABASE_URL"
-          value = var.db_url
-        }
+        {name = "FLASK_ENV", value = "production"},
+        {name = "PYTHONUNBUFFERED", value = "1"}
       ]
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"         = "/ecs/${local.project_tag}"
+          "awslogs-group"         = aws_cloudwatch_log_group.ecs_service_logs.name
           "awslogs-region"        = var.aws_region
           "awslogs-stream-prefix" = "ecs"
         }
@@ -44,7 +51,7 @@ resource "aws_ecs_service" "app" {
   name            = "${local.project_tag}-ecs-service"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
-  desired_count   = var.ecs_desired_count
+  desired_count   = var.app_desired_count
   launch_type     = "FARGATE"
   network_configuration {
     subnets         = aws_subnet.private[*].id
@@ -58,4 +65,10 @@ resource "aws_ecs_service" "app" {
   }
   depends_on = [aws_lb_listener.frontend_http]
   tags = local.tags
+}
+
+resource "aws_cloudwatch_log_group" "ecs_service_logs" {
+  name              = "/ecs/${local.project_tag}-app" # Use -app or similar differentiator
+  retention_in_days = 7
+  tags              = local.tags
 }

@@ -5,12 +5,12 @@ output "rds_cluster_endpoint" {
 
 output "rds_cluster_reader_endpoint" {
   description = "Reader endpoint of the RDS aurora cluster (need to run multiple instances)"
-  value = aws_rds_cluster.main.rds_cluster_reader_endpoint
+  value = aws_rds_cluster.main.reader_endpoint
 }
 
 output "rds_cluster_port" {
   description = "Port of the RDS Aurora cluster"
-  value = aws_rds_cluster.main.Port
+  value = aws_rds_cluster.main.port
 }
 
 output "database_name_output" {
