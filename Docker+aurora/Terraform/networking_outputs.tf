@@ -15,3 +15,13 @@ output "route_table_ids_map" {
     private_az1 = var.az_count > 1 ? aws_route_table.private[1].id : "N/A"
   }
 }
+
+output "selected_availability_zones" {
+  description = "The Availability Zones selected for use."
+  value       = local.azs
+}
+
+output "all_available_availability_zones_in_region" {
+  description = "All availability zones in the current region reported by the data source."
+  value       = data.aws_availability_zones.available.names
+}

@@ -1,11 +1,11 @@
-# terraform.tfvars
+# D:\school\Semester 2\Cloud platforms\Terraflask\Docker+aurora\Terraform\terraform.tfvars
 
-aws_region   = "us-east-1" # Or your chosen region from global_variables.tf
-project_name = "flask-crud-r0984339" # From global_variables.tf
+aws_region   = "us-east-1"
+project_name = "flask-crud-r0984339"
+az_count     = 2 #1 for now for test then 2 for later
 
-# You will set this after building and pushing your Docker image
-# app_image_uri = "YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/flask-crud-r0984339-app:latest"
+app_image_uri = "125755581655.dkr.ecr.us-east-1.amazonaws.com/flask-crud-r0984339-app:latest" # <--- THIS IS THE LINE TO ENSURE IS CORRECT AND UNCOMMENTED
 
-# --- ALB Variables (Only if doing HTTPS) ---
-# enable_https        = true
-# acm_certificate_arn = "arn:aws:acm:YOUR_REGION:YOUR_ACCOUNT_ID:certificate/YOUR_CERT_ID"
+# --- ALB Variables (For HTTPS - Extra Points) ---
+enable_https        = false
+acm_certificate_arn = "arn:aws:acm:us-east-1:125755581655:certificate/YOUR_ACTUAL_CERTIFICATE_ID_HERE" # Ensure this is your valid cert ARN
