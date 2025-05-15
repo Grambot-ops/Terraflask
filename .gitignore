@@ -1,2 +1,4 @@
 **/example-flask-crud/
 **/.env
+.terraform.lock.hcl
+.terraform/
