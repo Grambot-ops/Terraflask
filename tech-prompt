@@ -313,7 +313,7 @@ echo "Ensure your local IP is whitelisted in Aurora's security group if testing 
 echo "------------------------------------------------------------------"
 "
 
-i would to complete the task with terraform as you can you can see i will be setting up working invorment with amazon aurora as the database.
+i would to complete the task with terraform as you can you can see i will be setting up working with amazon aurora as the database.
 here is my network design:
 "
 
