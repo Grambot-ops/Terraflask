@@ -1,28 +1,19 @@
-from flask import render_template, request, redirect
+from flask import render_template, request, redirect, jsonify
 from app import app, db
 from app.models import Entry
+import os
 
 jedi = "of the jedi"
+
+@app.route('/health')
+def health_check():
+    # Simple health check that doesn't require database connectivity
+    return jsonify(status="healthy"), 200
 
 @app.route('/')
 @app.route('/index')
 def index():
-    # entries = [
-    #     {
-    #         'id' : 1,
-    #         'title': 'test title 1',
-    #         'description' : 'test desc 1',
-    #         'status' : True
-    #     },
-    #     {
-    #         'id': 2,
-    #         'title': 'test title 2',
-    #         'description': 'test desc 2',
-    #         'status': False
-    #     }
-    # ]
-    entries = Entry.query.all()
-    return render_template('index.html', entries=entries)
+    return "Hello from the Flask CRUD App! This is a simplified version that doesn't require database connectivity."
 
 @app.route('/add', methods=['POST'])
 def add():
