@@ -1,18 +1,21 @@
 # TerraFlask - Flask Application Deployment with AWS and Terraform
 
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/Grambot-ops/terraflask?style=social)](https://github.com/Grambot-ops/terraflask/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/Grambot-ops/terraflask)](https://github.com/Grambot-ops/terraflask/issues)
 
 A production-ready solution demonstrating how to deploy a Flask CRUD application on AWS using infrastructure as code with Terraform.
 
-![Architecture Diagram](https://miro.medium.com/v2/resize:fit:1400/1*KD2lgyr7zCLqwXZgCm0Kpw.png)
+![Architecture Diagram](Diagrams/TerraFlask.drawio.png)
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Quick Start](#quick-start)
 - [Application Functionality](#application-functionality)
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
-- [Directory Structure](#directory-structure)
+- [Project Structure](#project-structure)
 - [Local Development](#local-development)
 - [AWS Deployment](#aws-deployment)
   - [Step 1: Build and Push Docker Image](#step-1-build-and-push-docker-image)
@@ -25,15 +28,36 @@ A production-ready solution demonstrating how to deploy a Flask CRUD application
   - [Database Configuration](#database-configuration)
   - [Secrets Management](#secrets-management)
 - [Monitoring and Logging](#monitoring-and-logging)
+- [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
+- [FAQ](#faq)
 - [Cleanup](#cleanup)
 - [Future Improvements](#future-improvements)
+- [Learning Resources](#learning-resources)
+- [Contributors](#contributors)
 - [References](#references)
 - [License](#license)
 
 ## Overview
 
 TerraFlask demonstrates a modern cloud application deployment approach, combining Flask, Docker, and AWS services orchestrated through Terraform. This project showcases best practices for building a scalable, secure, and maintainable cloud infrastructure for web applications.
+
+## Quick Start
+
+For those who want to get started quickly:
+
+```bash
+# Clone repository
+git clone https://github.com/Grambot-ops/terraflask.git
+cd terraflask
+
+# Run locally with Docker Compose
+cd Docker+Postgress
+docker-compose up -d
+
+# Access the application
+open http://localhost:5000
+```
 
 ## Application Functionality
 
@@ -46,6 +70,8 @@ The Flask application is a simple CRUD (Create, Read, Update, Delete) applicatio
 - Toggle entry status
 
 The application uses a PostgreSQL database for persistent storage, which is managed by AWS Aurora in the cloud deployment.
+
+![Application Screenshot](https://i.imgur.com/8FzdJ6o.png)
 
 ## Architecture
 
@@ -61,6 +87,8 @@ The deployment architecture consists of the following components:
 - **AWS Secrets Manager & SSM Parameter Store**: Secure storage for sensitive configuration and credentials
 - **CloudWatch**: Monitoring and logging service for operational health insights
 
+> **Note:** You can find detailed architecture diagrams in the `Diagrams` directory. These diagrams illustrate the VPC design, security group configuration, and overall infrastructure architecture.
+
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:
@@ -71,11 +99,29 @@ Before you begin, ensure you have the following installed:
 - **Git**
 - An AWS account with permissions to create the required resources
 
-## Directory Structure
+## Project Structure
+
+This project is organized into two main environments:
+
+### Local Development Environment (`Docker+Postgress/`)
+This directory contains everything needed to run the application locally with PostgreSQL for development and testing purposes. Use this environment to understand how the application works before deploying to AWS.
+
+### Cloud Deployment Environment (`Docker+aurora/`)
+This directory contains everything needed to deploy the application to AWS with Aurora PostgreSQL. Use this environment for production-grade deployment.
 
 ```
 TerraFlask/
-├── Docker+aurora/              # Main project directory
+├── Diagrams/                   # Architecture diagrams showing VPC, security groups, etc.
+│   ├── TerraFlask.drawio       # Source diagram file (can be opened with diagrams.net)
+│   └── TerraFlask.drawio.png   # PNG export of the architecture diagram
+│
+├── Docker+Postgress/           # Local development environment
+│   ├── example-flask-crud/     # Flask application code
+│   ├── Dockerfile              # Local Docker container configuration
+│   ├── docker-compose.yaml     # Local development setup with PostgreSQL
+│   └── nginx/                  # NGINX configuration for local development
+│
+├── Docker+aurora/              # AWS cloud deployment environment
 │   ├── example-flask-crud/     # Flask application code
 │   │   ├── app/                # Main application package
 │   │   │   ├── __init__.py     # Application initialization
@@ -86,18 +132,18 @@ TerraFlask/
 │   │   ├── migrations/         # Database migration files
 │   │   ├── crudapp.py          # Application entry point
 │   │   └── requirements.txt    # Python dependencies
-│   ├── Dockerfile              # Docker container configuration
-│   ├── docker-compose.yaml     # Local development configuration
+│   ├── Dockerfile              # Docker container configuration for AWS
+│   ├── docker-compose.yaml     # Docker Compose for AWS setup
 │   ├── entrypoint.sh           # Container startup script
 │   ├── init-flask-db.sh        # Database initialization script
-│   ├── Terraform/              # Infrastructure as Code
+│   ├── Terraform/              # Infrastructure as Code for AWS
 │   │   ├── alb.tf              # Application Load Balancer config
 │   │   ├── ecs.tf              # ECS Fargate config
 │   │   ├── rds.tf              # Aurora PostgreSQL config
 │   │   ├── vpc.tf              # Network configuration
 │   │   ├── security_groups.tf  # Security configuration
 │   │   └── ...                 # Other Terraform configs
-│   └── nginx/                  # NGINX configuration (local dev)
+│   └── nginx/                  # NGINX configuration for AWS
 └── README.md                   # Project documentation
 ```
 
@@ -107,8 +153,8 @@ To run the application locally for development:
 
 1. Clone the repository and navigate to the project directory:
    ```bash
-   git clone https://github.com/yourusername/terraflask.git
-   cd terraflask/Docker+aurora
+   git clone https://github.com/Grambot-ops/terraflask.git
+   cd terraflask/Docker+Postgress
    ```
 
 2. Create a `.env` file with the following configuration:
@@ -136,11 +182,13 @@ To run the application locally for development:
 
 ## AWS Deployment
 
+After testing the application locally, you can deploy it to AWS:
+
 ### Step 1: Build and Push Docker Image
 
-1. Navigate to the Docker directory:
+1. Navigate to the Docker+aurora directory:
    ```bash
-   cd Docker+aurora
+   cd terraflask/Docker+aurora
    ```
 
 2. Build the Docker image:
@@ -232,7 +280,7 @@ The deployment uses several security groups to control traffic flow:
 
 1. **ALB Security Group**:
    - Inbound: HTTP (80) and HTTPS (443) from anywhere
-   - Outbound: Port 5000 to ECS Service Security Group
+   - Outbound: Port 5000 to ECS Service Security Group only
 
 2. **ECS Service Security Group**:
    - Inbound: Port 5000 from ALB Security Group only
@@ -280,6 +328,40 @@ To view ALB access logs:
 aws logs get-log-events --log-group-name /aws/alb/flask-crud-YOUR_UNIQUE_ID-alb-access-logs --log-stream-name ALB_LOG_STREAM
 ```
 
+## Testing
+
+This application includes several levels of testing to ensure reliability:
+
+### Unit Testing
+
+To run unit tests locally:
+
+```bash
+cd Docker+Postgress/example-flask-crud
+python -m pytest tests/
+```
+
+### Integration Testing
+
+Integration tests verify that different components work together correctly:
+
+```bash
+cd Docker+Postgress/example-flask-crud
+python -m pytest tests/integration/
+```
+
+### Load Testing
+
+For load testing the deployed application:
+
+```bash
+# Install locust load testing tool
+pip install locust
+
+# Run load test
+locust -f load_tests/locustfile.py --host=http://ALB_DNS_NAME
+```
+
 ## Troubleshooting
 
 ### Common Issues
@@ -321,6 +403,30 @@ aws ecs update-service --cluster flask-crud-YOUR_UNIQUE_ID-ecs-cluster --service
 aws ecs execute-command --cluster flask-crud-YOUR_UNIQUE_ID-ecs-cluster --task TASK_ID --container app --command "/bin/sh" --interactive
 ```
 
+## FAQ
+
+### General Questions
+
+**Q: What is the purpose of this project?**  
+A: TerraFlask demonstrates how to deploy a Flask application on AWS using infrastructure as code with Terraform, following best practices for security, scalability, and maintainability.
+
+**Q: Do I need an AWS account to use this project?**  
+A: You can run the application locally with Docker without an AWS account. For deployment to AWS, you will need an AWS account with appropriate permissions.
+
+**Q: What's the difference between Docker+Postgress and Docker+aurora directories?**  
+A: Docker+Postgress is for local development with a regular PostgreSQL database, while Docker+aurora is for AWS deployment with Aurora PostgreSQL.
+
+### Technical Questions
+
+**Q: How is the database connection secured?**  
+A: Database credentials are stored in AWS Secrets Manager and securely injected into the application container at runtime. The database is deployed in a private subnet and can only be accessed by the application's security group.
+
+**Q: How can I scale the application?**  
+A: You can adjust the `app_desired_count` variable in Terraform to increase the number of ECS tasks. The ALB will automatically distribute traffic across these tasks.
+
+**Q: Can I deploy this to a different AWS region?**  
+A: Yes, simply change the `aws_region` variable in your `terraform.tfvars` file to your desired region.
+
 ## Cleanup
 
 To avoid incurring charges, clean up resources when no longer needed:
@@ -350,6 +456,32 @@ Potential enhancements for this project:
 - Implement auto-scaling for ECS tasks based on load
 - Add CloudFront distribution for global content delivery
 - Implement monitoring and alerting with CloudWatch Alarms
+
+## Learning Resources
+
+To learn more about the technologies used in this project:
+
+### AWS
+- [AWS ECS Workshop](https://ecsworkshop.com/)
+- [AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)
+- [Amazon Aurora PostgreSQL Documentation](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraPostgreSQL.html)
+
+### Terraform
+- [Terraform Learning Resources](https://learn.hashicorp.com/terraform)
+- [Terraform AWS Provider Documentation](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
+
+### Flask & Python
+- [Flask Documentation](https://flask.palletsprojects.com/)
+- [SQLAlchemy Documentation](https://docs.sqlalchemy.org/)
+- [Dockerizing Flask Applications](https://testdriven.io/blog/dockerizing-flask-with-postgres-gunicorn-and-nginx/)
+
+### Docker
+- [Docker Documentation](https://docs.docker.com/)
+- [Docker Compose Documentation](https://docs.docker.com/compose/)
+
+## Contributors
+
+- [Grambot-ops](https://github.com/Grambot-ops) - Project creator and maintainer
 
 ## References
 
