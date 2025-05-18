@@ -21,6 +21,10 @@ echo "Running database migrations against ${DATABASE_URL}..." # Good to log the 
 flask db upgrade
 echo "Database migrations complete."
 
-# Start Gunicorn
-echo "Starting Gunicorn..."
-exec gunicorn --bind 0.0.0.0:5000 crudapp:app
+# Test if Python can import the app
+echo "Attempting to import 'app:app' with python -c ..."
+python -c "from app import app; print('Successfully imported app:app. App object:', app)" || echo "Failed to import app:app with python -c"
+
+# Start Gunicorn server with enhanced logging, increased timeout, and preloading
+echo "Starting Gunicorn server..."
+exec gunicorn --workers 1 --bind 0.0.0.0:5000 --log-level debug --access-logfile - --error-logfile - --access-logformat '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"' --timeout 120 --preload app:app

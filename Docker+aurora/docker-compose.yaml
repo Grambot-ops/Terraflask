@@ -41,3 +41,8 @@ services:
 networks:
   app-network:
     driver: bridge
+
+# Volumes Definition
+volumes:
+  db-data:
+    driver: local

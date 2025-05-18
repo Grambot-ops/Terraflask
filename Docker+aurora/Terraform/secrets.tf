@@ -1,11 +1,10 @@
-
 resource "random_password" "flask_secret_key_gen" {
   length  = 32
   special = false # Flask secret keys are often simpler strings
 }
 
 resource "aws_secretsmanager_secret" "flask_secret" {
-  name = "${local.project_tag}/flask-secret-key"
+  name = "${local.project_tag}/flask-secret-key-v2"
   tags = local.tags
 }
 

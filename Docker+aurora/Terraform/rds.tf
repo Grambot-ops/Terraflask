@@ -5,7 +5,7 @@ resource "random_password" "db_password" {
 }
 
 resource "aws_secretsmanager_secret" "db_master_password" {
-  name = "${local.project_tag}/db-master-password"
+  name = "${local.project_tag}/db-master-password-v2"
   tags = local.tags
 }
 
