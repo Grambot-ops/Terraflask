@@ -449,13 +449,7 @@ To avoid incurring charges, clean up resources when no longer needed:
 Potential enhancements for this project:
 
 - HTTPS support with AWS Certificate Manager
-- Implement CI/CD pipeline with GitHub Actions or AWS CodePipeline
-- Add AWS WAF for additional security
 - Implement database read replicas for improved performance
-- Set up automated database backups to S3
-- Implement auto-scaling for ECS tasks based on load
-- Add CloudFront distribution for global content delivery
-- Implement monitoring and alerting with CloudWatch Alarms
 
 ## Learning Resources
 
